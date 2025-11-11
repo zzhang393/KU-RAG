@@ -162,7 +162,7 @@ def check_step_completed(dataset: str, step: str) -> bool:
 
 
 def evaluate(args):
-    """Evaluate results using LLM."""
+    """Evaluate results using LLM"""
     print(f"\n{'='*60}")
     print(f"Evaluation for {args.dataset.upper()}")
     print(f"{'='*60}\n")
@@ -172,15 +172,16 @@ def evaluate(args):
         print(f"Error: Dataset '{args.dataset}' not found!")
         return
     
-    # Import LLM client
+    # Import modules
     sys.path.insert(0, 'common')
     from llm_client import create_client
+    from evaluator import create_evaluator, load_ground_truth
     
     # Load configuration
     config_file = f"{dataset_path}/llm_config.json"
     llm_config = {}
     if os.path.exists(config_file):
-        with open(config_file, 'r') as f:
+        with open(config_file, 'r', encoding='utf-8') as f:
             llm_config = json.load(f)
         print(f"Loaded LLM config: {config_file}")
     else:
@@ -190,29 +191,43 @@ def evaluate(args):
     # Create LLM client
     client = create_client(llm_config)
     
-    # Find generated image directory
-    image_dirs = ['image_test', 'image_test2', 'generated_passages']
-    image_dir = None
+    # Determine evaluation mode
+    mode = getattr(args, 'eval_mode', 'kc_award')  # Default to KC-Award mode
+    
+    # Create answer save directory
+    answer_dir = f"{dataset_path}/answers"
+    os.makedirs(answer_dir, exist_ok=True)
+    
+    if mode == 'original':
+        # Single image mode: only use original image
+        print("\n[Mode: Single Image Evaluation]")
+        evaluate_original_mode(args, dataset_path, client, answer_dir)
+    else:
+        # KC-Award mode: two-stage answer generation
+        print("\n[Mode: KC-Award Prompt Evaluation]")
+        evaluate_kc_award_mode(args, dataset_path, client, answer_dir)
+
+
+def evaluate_original_mode(args, dataset_path: str, client, answer_dir: str):
+    """Single image mode evaluation"""
+    from evaluator import create_evaluator, load_ground_truth
+    
+    # Find original image directory
+    image_dirs = ['image', 'val2014', 'images']
+    original_image_dir = None
     for dir_name in image_dirs:
         test_dir = f"{dataset_path}/{dir_name}"
         if os.path.exists(test_dir):
-            image_dir = test_dir
+            original_image_dir = test_dir
             break
     
-    if not image_dir:
-        print(f"Error: Generated image directory not found")
-        print(f"Please run the generate stage first to create visual passages")
+    if not original_image_dir:
+        print(f"Error: Original image directory not found")
         return
     
-    print(f"Using image directory: {image_dir}")
+    print(f"Using original image directory: {original_image_dir}")
     
     # Load question data
-    qa_data_paths = [
-        f"{dataset_path}/qa_data/*.json",
-        f"{dataset_path}/qa_data/*.jsonl",
-        f"{dataset_path}/*.csv"
-    ]
-    
     questions_list = load_questions(dataset_path, args.dataset)
     if not questions_list:
         print("Error: Unable to load question data")
@@ -223,22 +238,17 @@ def evaluate(args):
     # Build QA pairs list
     qa_pairs = []
     for question in questions_list:
-        # Get question ID (field names may vary across datasets)
         q_id = question.get('data_id') or question.get('question_id') or question.get('id')
         q_text = question.get('question')
+        q_image_id = question.get('image_id')
         
         if not q_id or not q_text:
             continue
         
-        # Find corresponding generated image
-        image_path = None
-        for ext in ['.jpg', '.png', '.jpeg']:
-            test_path = f"{image_dir}/{q_id}{ext}"
-            if os.path.exists(test_path):
-                image_path = test_path
-                break
+        # Find corresponding original image
+        image_path = find_original_image(original_image_dir, q_id, q_image_id, args.dataset)
         
-        if image_path:
+        if image_path and os.path.exists(image_path):
             qa_pairs.append({
                 'id': q_id,
                 'question': q_text,
@@ -252,9 +262,7 @@ def evaluate(args):
         return
     
     # Save path
-    answer_dir = f"{dataset_path}/answers"
-    os.makedirs(answer_dir, exist_ok=True)
-    save_path = f"{answer_dir}/llm_answers.json"
+    save_path = f"{answer_dir}/original_answers.json"
     
     # Batch get answers
     print(f"\nStarting LLM calls to get answers...")
@@ -266,10 +274,226 @@ def evaluate(args):
         resume=True
     )
     
+    # Evaluate results using evaluator
+    print(f"\nStarting answer evaluation...")
+    evaluator = create_evaluator(args.dataset)
+    ground_truths = load_ground_truth(args.dataset, dataset_path)
+    
+    if not ground_truths:
+        print(f"Warning: No ground truth data loaded. Skipping evaluation.")
+        print(f"Please ensure ground truth files exist in {dataset_path}/qa_data/")
+        return
+    
+    print(f"Loaded {len(ground_truths)} ground truth answers")
+    
+    # Format results to match evaluator expected format
+    formatted_results = []
+    for r in results:
+        formatted_results.append({
+            'id': r.get('id'),
+            'question_id': r.get('id'),
+            'question': r.get('question'),
+            'answer': r.get('answer'),
+            'image': r.get('image')
+        })
+    
+    # Perform evaluation using evaluator
+    eval_results, metrics = evaluator.evaluate_batch(formatted_results, ground_truths)
+    
+    # Save evaluation results using evaluator
+    output_path = f"{answer_dir}/eval_original"
+    evaluator.save_results(eval_results, metrics, output_path)
+    
     print(f"\n{'='*60}")
-    print(f"Evaluation completed! Generated {len(results)} answers")
-    print(f"Results saved to: {save_path}")
+    print(f"Single image mode evaluation completed!")
+    print(f"Accuracy: {metrics['accuracy']:.2%} ({metrics['correct']}/{metrics['total']})")
+    print(f"Results saved to: {output_path}.xlsx")
     print(f"{'='*60}\n")
+
+
+def evaluate_kc_award_mode(args, dataset_path: str, client, answer_dir: str):
+    """KC-Award Prompt mode evaluation"""
+    from evaluator import create_evaluator, load_ground_truth
+    
+    # Find original image directory
+    image_dirs = ['image', 'val2014', 'images']
+    original_image_dir = None
+    for dir_name in image_dirs:
+        test_dir = f"{dataset_path}/{dir_name}"
+        if os.path.exists(test_dir):
+            original_image_dir = test_dir
+            break
+    
+    if not original_image_dir:
+        print(f"Error: Original image directory not found")
+        return
+    
+    # Find retrieved image directory
+    retrieved_image_dirs = ['image_test', 'image_test2', 'generated_passages']
+    retrieved_image_dir = None
+    for dir_name in retrieved_image_dirs:
+        test_dir = f"{dataset_path}/{dir_name}"
+        if os.path.exists(test_dir):
+            retrieved_image_dir = test_dir
+            break
+    
+    if not retrieved_image_dir:
+        print(f"Error: Retrieved image directory not found")
+        print(f"Please run generate stage first to create visual passages")
+        return
+    
+    print(f"Using original image directory: {original_image_dir}")
+    print(f"Using retrieved image directory: {retrieved_image_dir}")
+    
+    # Load question data
+    questions_list = load_questions(dataset_path, args.dataset)
+    if not questions_list:
+        print("Error: Unable to load question data")
+        return
+    
+    print(f"Loaded {len(questions_list)} questions")
+    
+    # Build QA pairs list
+    qa_pairs = []
+    for question in questions_list:
+        q_id = question.get('data_id') or question.get('question_id') or question.get('id')
+        q_text = question.get('question')
+        q_image_id = question.get('image_id')
+        
+        if not q_id or not q_text:
+            continue
+        
+        # Find corresponding original image
+        original_image = find_original_image(original_image_dir, q_id, q_image_id, args.dataset)
+        
+        # Find corresponding retrieved image
+        retrieved_image = None
+        for ext in ['.jpg', '.png', '.jpeg']:
+            test_path = f"{retrieved_image_dir}/{q_id}{ext}"
+            if os.path.exists(test_path):
+                retrieved_image = test_path
+                break
+        
+        if original_image and retrieved_image and os.path.exists(original_image):
+            qa_pairs.append({
+                'id': q_id,
+                'question': q_text,
+                'original_image': original_image,
+                'retrieved_image': retrieved_image
+            })
+    
+    print(f"Found {len(qa_pairs)} valid QA pairs")
+    
+    if len(qa_pairs) == 0:
+        print("Error: No valid QA pairs found")
+        return
+    
+    # Save paths
+    original_save_path = f"{answer_dir}/original_answers.json"
+    enhanced_save_path = f"{answer_dir}/enhanced_answers.json"
+    
+    # Batch get answers using KC-Award Prompt
+    print(f"\nStarting LLM calls to get KC-Award Prompt answers...")
+    print(f"Original answers will be saved to: {original_save_path}")
+    print(f"Enhanced answers will be saved to: {enhanced_save_path}")
+    
+    original_results, enhanced_results = client.batch_get_kc_award_answers(
+        qa_pairs=qa_pairs,
+        original_save_path=original_save_path,
+        enhanced_save_path=enhanced_save_path,
+        resume=True
+    )
+    
+    # Evaluate results using evaluator
+    print(f"\nStarting answer evaluation...")
+    evaluator = create_evaluator(args.dataset)
+    ground_truths = load_ground_truth(args.dataset, dataset_path)
+    
+    if not ground_truths:
+        print(f"Warning: No ground truth data loaded. Skipping evaluation.")
+        print(f"Please ensure ground truth files exist in {dataset_path}/qa_data/")
+        return
+    
+    print(f"Loaded {len(ground_truths)} ground truth answers")
+    
+    # Evaluate original answers using evaluator
+    formatted_original = []
+    for r in original_results:
+        formatted_original.append({
+            'id': r.get('id'),
+            'question_id': r.get('id'),
+            'question': r.get('question'),
+            'answer': r.get('answer'),
+            'image': r.get('image')
+        })
+    
+    original_eval_results, original_metrics = evaluator.evaluate_batch(formatted_original, ground_truths)
+    
+    # Evaluate enhanced answers using evaluator
+    formatted_enhanced = []
+    for r in enhanced_results:
+        formatted_enhanced.append({
+            'id': r.get('id'),
+            'question_id': r.get('id'),
+            'question': r.get('question'),
+            'answer': r.get('answer'),
+            'original_image': r.get('original_image'),
+            'retrieved_image': r.get('retrieved_image')
+        })
+    
+    enhanced_eval_results, enhanced_metrics = evaluator.evaluate_batch(formatted_enhanced, ground_truths)
+    
+    # Save evaluation results using evaluator
+    original_output_path = f"{answer_dir}/eval_original"
+    enhanced_output_path = f"{answer_dir}/eval_enhanced"
+    
+    evaluator.save_results(original_eval_results, original_metrics, original_output_path)
+    evaluator.save_results(enhanced_eval_results, enhanced_metrics, enhanced_output_path)
+    
+    print(f"\n{'='*60}")
+    print(f"KC-Award Prompt mode evaluation completed!")
+    print(f"Original answer accuracy: {original_metrics['accuracy']:.2%} ({original_metrics['correct']}/{original_metrics['total']})")
+    print(f"Enhanced answer accuracy: {enhanced_metrics['accuracy']:.2%} ({enhanced_metrics['correct']}/{enhanced_metrics['total']})")
+    print(f"Accuracy improvement: {(enhanced_metrics['accuracy'] - original_metrics['accuracy']):.2%}")
+    print(f"\nResults saved:")
+    print(f"  - Original: {original_output_path}.xlsx")
+    print(f"  - Enhanced: {enhanced_output_path}.xlsx")
+    print(f"{'='*60}\n")
+
+
+def find_original_image(image_dir: str, q_id: str, image_id: str, dataset_name: str) -> str:
+    """
+    Find original image path
+    
+    Args:
+        image_dir: Image directory
+        q_id: Question ID
+        image_id: Image ID
+        dataset_name: Dataset name
+    
+    Returns:
+        Image path
+    """
+    # Try different naming patterns
+    possible_patterns = [
+        f"{image_id}.jpg",
+        f"{image_id}.png",
+        f"{image_id}.jpeg",
+        f"{q_id}.jpg",
+        f"{q_id}.png",
+    ]
+    
+    # Special handling for OK-VQA
+    if 'okvqa' in dataset_name.lower() or 'ok-vqa' in dataset_name.lower():
+        if image_id:
+            possible_patterns.insert(0, f"COCO_val2014_{int(image_id):012d}.jpg")
+    
+    for pattern in possible_patterns:
+        full_path = f"{image_dir}/{pattern}"
+        if os.path.exists(full_path):
+            return full_path
+    
+    return None
 
 
 def load_questions(dataset_path: str, dataset_name: str) -> list:
@@ -398,6 +622,14 @@ Stages:
         type=str,
         default='cuda',
         help='Device to use (cuda or cpu)'
+    )
+    
+    parser.add_argument(
+        '--eval-mode',
+        type=str,
+        choices=['original', 'kc_award'],
+        default='kc_award',
+        help='Evaluation mode: original (single image) or kc_award (two-stage with KC-Award Prompt)'
     )
     
     args = parser.parse_args()

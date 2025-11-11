@@ -88,8 +88,11 @@ python main.py --dataset okvqa --stage full
 # Run specific stage
 python main.py --dataset okvqa --stage retrieve
 
-# Run evaluation with LLM
-python main.py --dataset okvqa --stage evaluate
+# Run evaluation with LLM (RAG mode - recommended)
+python main.py --dataset okvqa --stage evaluate --eval-mode rag
+
+# Run evaluation with single image mode
+python main.py --dataset okvqa --stage evaluate --eval-mode original
 
 # Skip already completed steps
 python main.py --dataset okvqa --stage full --skip-existing
@@ -103,19 +106,66 @@ python main.py --dataset okvqa --stage full --skip-existing
 - `evaluate`: Evaluate with LLM (GPT-4V, etc.)
 - `full`: Run complete pipeline
 
+### Evaluation with LLM
+
+KU-RAG supports two evaluation modes for validating system performance:
+
+**Evaluation Modes:**
+- **KC-Award Prompt mode** (recommended): Two-stage answer generation, first answer using original image, then update answer with retrieved knowledge image
+- **Single image mode**: Evaluate using only original image as baseline
+
 **LLM Configuration:**
 
-To use the evaluation stage, set up your LLM API credentials:
-
+Option 1: Use environment variables (recommended)
 ```bash
-# Option 1: Environment variables (recommended)
 export LLM_API_KEY="your-api-key"
 export LLM_API_URL="https://api.openai.com/v1/chat/completions"
+```
 
-# Option 2: Create config file
-cp llm_config.example.json datasets/okvqa/llm_config.json
+Option 2: Create config file
+```bash
+# Copy example config
+cp common/llm_config_example.json datasets/okvqa/llm_config.json
 # Edit the config file with your API credentials
 ```
+
+**Supported Models:**
+- OpenAI: GPT-4, GPT-4V, GPT-4o, GPT-4o-mini
+- Qwen: qwen2.5-vl-32b-instruct (via compatible interface)
+- Other OpenAI API compatible services
+
+**Run Evaluation:**
+
+```bash
+# KC-Award Prompt mode evaluation (recommended)
+python main.py --dataset okvqa --stage evaluate --eval-mode kc_award
+
+# Single image mode evaluation
+python main.py --dataset okvqa --stage evaluate --eval-mode original
+```
+
+**Evaluation Output:**
+
+After evaluation completes, the following files will be generated in `datasets/{dataset}/answers/`:
+- `original_answers.json` / `enhanced_answers.json`: LLM generated answers
+- `eval_original.xlsx` / `eval_enhanced.xlsx`: Evaluation result reports (Excel)
+- `eval_*_wrong.json`: Wrong case ID lists
+
+**Example Output:**
+```
+============================================================
+KC-Award Prompt mode evaluation completed!
+Original answer accuracy: 45.23% (2282/5046)
+Enhanced answer accuracy: 52.67% (2657/5046)
+Accuracy improvement: +7.44%
+============================================================
+```
+
+**Features:**
+- ✅ Supports checkpoint resume (can continue after interruption)
+- ✅ Auto-save progress (every 10 questions)
+- ✅ Supports multiple datasets (OK-VQA, OVEN, InfoSeek, E-VQA)
+- ✅ Automatic accuracy and metric calculation
 
 ### Example: Query-Aware Segmentation
 
