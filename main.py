@@ -12,6 +12,7 @@ Unified interface for running the complete KU-RAG pipeline:
 import argparse
 import os
 import sys
+import json
 from pathlib import Path
 
 
@@ -161,19 +162,157 @@ def check_step_completed(dataset: str, step: str) -> bool:
 
 
 def evaluate(args):
-    """Evaluate results (placeholder for VLM integration)."""
+    """Evaluate results using LLM."""
     print(f"\n{'='*60}")
     print(f"Evaluation for {args.dataset.upper()}")
     print(f"{'='*60}\n")
     
-    print("Note: This is a placeholder for VLM-based evaluation.")
-    print("To complete evaluation:")
-    print("  1. Feed generated passages to your VLM (e.g., GPT-4V, LLaVA)")
-    print("  2. Collect answers")
-    print("  3. Compare with ground truth")
-    print("\nFor reference implementations, see:")
-    print(f"  - datasets/{args.dataset}/answer/")
-    print("  - External VLM inference scripts")
+    dataset_path = f"datasets/{args.dataset}"
+    if not os.path.exists(dataset_path):
+        print(f"Error: Dataset '{args.dataset}' not found!")
+        return
+    
+    # Import LLM client
+    sys.path.insert(0, 'common')
+    from llm_client import create_client
+    
+    # Load configuration
+    config_file = f"{dataset_path}/llm_config.json"
+    llm_config = {}
+    if os.path.exists(config_file):
+        with open(config_file, 'r') as f:
+            llm_config = json.load(f)
+        print(f"Loaded LLM config: {config_file}")
+    else:
+        print("LLM config file not found, using default configuration")
+        print("Hint: Please set environment variables LLM_API_KEY and LLM_API_URL")
+    
+    # Create LLM client
+    client = create_client(llm_config)
+    
+    # Find generated image directory
+    image_dirs = ['image_test', 'image_test2', 'generated_passages']
+    image_dir = None
+    for dir_name in image_dirs:
+        test_dir = f"{dataset_path}/{dir_name}"
+        if os.path.exists(test_dir):
+            image_dir = test_dir
+            break
+    
+    if not image_dir:
+        print(f"Error: Generated image directory not found")
+        print(f"Please run the generate stage first to create visual passages")
+        return
+    
+    print(f"Using image directory: {image_dir}")
+    
+    # Load question data
+    qa_data_paths = [
+        f"{dataset_path}/qa_data/*.json",
+        f"{dataset_path}/qa_data/*.jsonl",
+        f"{dataset_path}/*.csv"
+    ]
+    
+    questions_list = load_questions(dataset_path, args.dataset)
+    if not questions_list:
+        print("Error: Unable to load question data")
+        return
+    
+    print(f"Loaded {len(questions_list)} questions")
+    
+    # Build QA pairs list
+    qa_pairs = []
+    for question in questions_list:
+        # Get question ID (field names may vary across datasets)
+        q_id = question.get('data_id') or question.get('question_id') or question.get('id')
+        q_text = question.get('question')
+        
+        if not q_id or not q_text:
+            continue
+        
+        # Find corresponding generated image
+        image_path = None
+        for ext in ['.jpg', '.png', '.jpeg']:
+            test_path = f"{image_dir}/{q_id}{ext}"
+            if os.path.exists(test_path):
+                image_path = test_path
+                break
+        
+        if image_path:
+            qa_pairs.append({
+                'id': q_id,
+                'question': q_text,
+                'image': image_path
+            })
+    
+    print(f"Found {len(qa_pairs)} valid QA pairs")
+    
+    if len(qa_pairs) == 0:
+        print("Error: No valid QA pairs found")
+        return
+    
+    # Save path
+    answer_dir = f"{dataset_path}/answers"
+    os.makedirs(answer_dir, exist_ok=True)
+    save_path = f"{answer_dir}/llm_answers.json"
+    
+    # Batch get answers
+    print(f"\nStarting LLM calls to get answers...")
+    print(f"Results will be saved to: {save_path}")
+    
+    results = client.batch_get_answers(
+        qa_pairs=qa_pairs,
+        save_path=save_path,
+        resume=True
+    )
+    
+    print(f"\n{'='*60}")
+    print(f"Evaluation completed! Generated {len(results)} answers")
+    print(f"Results saved to: {save_path}")
+    print(f"{'='*60}\n")
+
+
+def load_questions(dataset_path: str, dataset_name: str) -> list:
+    """Load question data"""
+    questions = []
+    
+    # Try different file formats
+    qa_data_dir = f"{dataset_path}/qa_data"
+    
+    # JSON format
+    json_files = list(Path(qa_data_dir).glob("*.json")) if os.path.exists(qa_data_dir) else []
+    for json_file in json_files:
+        try:
+            with open(json_file, 'r') as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    questions.extend(data)
+                elif isinstance(data, dict) and 'questions' in data:
+                    questions.extend(data['questions'])
+        except Exception as e:
+            print(f"Failed to read {json_file}: {e}")
+    
+    # JSONL format
+    jsonl_files = list(Path(qa_data_dir).glob("*.jsonl")) if os.path.exists(qa_data_dir) else []
+    for jsonl_file in jsonl_files:
+        try:
+            with open(jsonl_file, 'r') as f:
+                for line in f:
+                    questions.append(json.loads(line))
+        except Exception as e:
+            print(f"Failed to read {jsonl_file}: {e}")
+    
+    # CSV format
+    csv_files = list(Path(dataset_path).glob("*.csv"))
+    for csv_file in csv_files:
+        try:
+            import pandas as pd
+            df = pd.read_csv(csv_file)
+            questions.extend(df.to_dict('records'))
+        except Exception as e:
+            print(f"Failed to read {csv_file}: {e}")
+    
+    return questions
 
 
 def list_datasets():
@@ -216,7 +355,7 @@ Stages:
   create_mk        Create meta-knowledge structure
   retrieve         Retrieve relevant knowledge units
   generate         Generate visual passages
-  evaluate         Evaluate with VLM (placeholder)
+  evaluate         Evaluate with LLM (GPT-4V, etc.)
   full             Run complete pipeline
         """
     )

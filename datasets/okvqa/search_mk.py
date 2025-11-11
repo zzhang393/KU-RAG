@@ -399,9 +399,6 @@ if __name__ == "__main__":
                                 {'question_id': str(question_id), 'name': str(mk_name), 'image': str(img_results[i][j]),
                                  'dist': round(sub_dist.astype(float), 2), 'idx': idx_record[sub_idx.astype(int)]})
 
-            if question_id == 1552915:
-                a = 0
-
             try:
                 sorted_data = sorted(idx_result, key=lambda x: x['dist'], reverse=False)
                 idx_results.append(sorted_data[:3])

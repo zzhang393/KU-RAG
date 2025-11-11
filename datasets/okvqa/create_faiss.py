@@ -85,9 +85,6 @@ def chunk_text2(text, kid):
             sent_group.append(''.join(sent_temp))
 
         for part in sent_group:
-            # if kid==16775:
-            #     b = 0
-
             if len(part) > 5:
                 inputs = longclip.tokenize(part, truncate=True).to(device)
                 chunks.append(inputs)

@@ -88,8 +88,33 @@ python main.py --dataset okvqa --stage full
 # Run specific stage
 python main.py --dataset okvqa --stage retrieve
 
+# Run evaluation with LLM
+python main.py --dataset okvqa --stage evaluate
+
 # Skip already completed steps
 python main.py --dataset okvqa --stage full --skip-existing
+```
+
+**Available Stages:**
+- `build_index`: Build FAISS indices for images and text
+- `create_mk`: Create meta-knowledge structure
+- `retrieve`: Retrieve relevant knowledge units
+- `generate`: Generate visual passages
+- `evaluate`: Evaluate with LLM (GPT-4V, etc.)
+- `full`: Run complete pipeline
+
+**LLM Configuration:**
+
+To use the evaluation stage, set up your LLM API credentials:
+
+```bash
+# Option 1: Environment variables (recommended)
+export LLM_API_KEY="your-api-key"
+export LLM_API_URL="https://api.openai.com/v1/chat/completions"
+
+# Option 2: Create config file
+cp llm_config.example.json datasets/okvqa/llm_config.json
+# Edit the config file with your API credentials
 ```
 
 ### Example: Query-Aware Segmentation
@@ -175,8 +200,8 @@ KU-RAG/
 If you use KU-RAG in your research, please cite:
 
 ```bibtex
-@article{zhang2025kurag,
-  title={Fine-Grained Knowledge Structuring and Retrieval for Visual Question Answering},
+@article{zhang2025fine,
+  title={Fine-Grained Retrieval-Augmented Generation for Visual Question Answering},
   author={Zhang, Zhengxuan and Wu, Yin and Luo, Yuyu and Tang, Nan},
   journal={arXiv preprint arXiv:2502.20964},
   year={2025}

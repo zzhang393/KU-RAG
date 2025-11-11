@@ -72,7 +72,7 @@ def chunk_text2(text, kid):
         return chunks
 
 
-# 编码文本的函数
+# Function to encode texts
 import torch
 import numpy as np
 
@@ -242,7 +242,7 @@ def read_txt(directory):
     return text_files_content
 
 
-directory_path = 'Textual Corpus'  # 替换为你的文件夹路径
+directory_path = 'Textual Corpus'  # Replace with your folder path
 text_files_dict = read_txt(directory_path)
 
 

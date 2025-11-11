@@ -230,15 +230,7 @@ def search_text2(query_input, mk_name, gpu_index):
     query_vector = torch.tensor(query_vector).numpy()
     distances, indices = gpu_index.search(query_vector, k=3)
 
-
     return distances, indices
-
-    # print(question['entity_id'], ":", question['entity_text'], "     ", question['data_split'])
-    # print(question['data_id'], ": ", question['question'])
-    # for rank, (dist, idx) in enumerate(zip(distances[0], indices[0])):
-    #     content = metadata[idx]
-    #     result = f"Text: {content}"
-    #     print(f"Rank {rank + 1}: Index {idx}, Distance {dist}, {result}")
 
 
 def search_text(questions_list):
@@ -259,8 +251,7 @@ def search_text(questions_list):
     for question in questions_list:
         text_input = question['question']
         keyword = extract_keywords(text_input)
-        text_input2 = text_input + '[SEP] Boeing 767' + ' [SEP]' + keyword
-        # text_input2 = 'Tuesday, March 1, 2:30pm""## Final standings.The final standings of the tournament.Official siteOfficial Event Information by World Curling Federation'
+        text_input2 = text_input + '[SEP]' + keyword
         query_vector = encode_text(text_input2)
         query_vector = torch.tensor(query_vector).numpy()
         distances, indices = gpu_index.search(query_vector, k=5)
