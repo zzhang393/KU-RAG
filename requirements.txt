@@ -1,0 +1,26 @@
+# Core dependencies
+torch>=2.0.0
+torchvision>=0.15.0
+numpy>=1.24.0
+
+# Computer Vision
+ultralytics>=8.0.0  # YOLOv8
+opencv-python>=4.8.0
+pillow>=10.0.0
+
+# Vector Search
+faiss-gpu>=1.7.2  # Use faiss-cpu if no GPU available
+# faiss-cpu>=1.7.2  # Uncomment for CPU-only environments
+
+# Data Processing
+pandas>=2.0.0
+pyarrow>=12.0.0  # For parquet file support
+
+# NLP
+spacy>=3.6.0
+
+# Optional: For development and testing
+# pytest>=7.4.0
+# black>=23.0.0
+# flake8>=6.0.0
+

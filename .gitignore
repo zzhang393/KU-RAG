@@ -1,0 +1,109 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Model weights and checkpoints
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.safetensors
+
+# FAISS indices
+*.vec
+*.index
+*.faiss
+
+# Data files
+*.csv
+*.json
+*.jsonl
+*.parquet
+*.xlsx
+*.txt
+!requirements.txt
+!bpe_simple_vocab_16e6.txt.gz
+
+# Generated images and outputs
+image_test/
+image_seg/
+image_seg2/
+image_coarse/
+image_coarse2/
+image_ok/
+image_event/
+image_temp/
+seg_img/
+
+# Results and intermediate files
+results/
+answer/
+answer_info/
+answer_oven/
+mk/
+save/
+
+# Datasets (large files)
+val2014/
+train2014/
+wikipedia_images_full/
+E-VQA_data/
+MMED Textual/
+Textual Corpus/
+corpus/
+qa_data/
+
+# IDE and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+.DS_Store
+Thumbs.db
+*.bak
+*.tmp
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Documentation
+docs/_build/
+
